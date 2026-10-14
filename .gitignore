@@ -4,3 +4,4 @@ firmware/test/build/
 secrets/
 *.env
 .superpowers/
+firmware/irrigation_controller/secrets.h

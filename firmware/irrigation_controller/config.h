@@ -42,4 +42,4 @@ constexpr unsigned long OPEN_PUBLISH_MS    = 2000UL;  // state heartbeat while o
 
 // ---- Wi-Fi first-boot setup portal / OTA ----
 constexpr const char* WIFI_AP_NAME = "Irrigation-Setup";
-constexpr const char* OTA_PASSWORD = "water1234";
+// OTA password lives in secrets.h (gitignored), see secrets.h.example

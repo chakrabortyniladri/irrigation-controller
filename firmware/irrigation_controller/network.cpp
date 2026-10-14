@@ -2,6 +2,7 @@
 // MQTT-only: the Pi is the only remote path (Tailscale), so there is no on-device web page.
 #include "network.h"
 #include "config.h"
+#include "secrets.h"   // OTA_PASSWORD; copy secrets.h.example, never commit
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <WiFiManager.h>
