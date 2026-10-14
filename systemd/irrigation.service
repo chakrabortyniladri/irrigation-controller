@@ -1,0 +1,19 @@
+[Unit]
+Description=Irrigation page, API, camera and scheduler (:8000)
+Wants=network-online.target
+After=network-online.target mosquitto.service
+
+[Service]
+Type=simple
+User=nilrasp
+WorkingDirectory=/home/nilrasp/irrigation-controller/server
+# IRRIGATION_USER=... / IRRIGATION_PASS=... ; chmod 600, never committed
+EnvironmentFile=/home/nilrasp/.irrigation.env
+ExecStart=/usr/bin/python3 irrigation_server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
