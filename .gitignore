@@ -3,3 +3,4 @@ __pycache__/
 firmware/test/build/
 secrets/
 *.env
+.superpowers/
