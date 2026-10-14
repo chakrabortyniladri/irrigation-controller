@@ -187,12 +187,133 @@ class App:
                          json.dumps({'action': 'open', 'seconds': s['seconds'], 'scheduled': True}))
 
 
+class Handler(server.BaseHTTPRequestHandler):
+    app = camera = frames = None          # set by main()
+    user = password = ''
+
+    def _authed(self):
+        if check_auth(self.headers.get('Authorization'), self.user, self.password):
+            return True
+        log.warning('auth failed from %s', self.client_address[0])
+        time.sleep(FAIL_DELAY_S)
+        self.send_response(401)
+        self.send_header('WWW-Authenticate', 'Basic realm="Irrigation"')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+        return False
+
+    def _send(self, status, body, ctype):
+        self.send_response(status)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, status, obj):
+        self._send(status, json.dumps(obj).encode(), 'application/json')
+
+    def _write(self, routes):
+        """POST/PUT: JSON only. A non-simple Content-Type forces a CORS preflight, so
+        another website can't drive the valve using the browser's saved password."""
+        if not self._authed():
+            return
+        fn = routes.get(self.path)
+        if fn is None:
+            return self.send_error(404)
+        if self.headers.get('Content-Type', '').split(';')[0].strip() != 'application/json':
+            return self._json(415, {'error': 'Content-Type must be application/json'})
+        try:
+            n = int(self.headers.get('Content-Length', 0))
+            body = json.loads(self.rfile.read(n)) if 0 < n <= 4096 else None
+        except ValueError:
+            body = None
+        self._json(*fn(body))
+
+    def do_GET(self):
+        if not self._authed():
+            return
+        if self.path == '/':
+            self._send(200, PAGE.read_bytes(), 'text/html; charset=utf-8')
+        elif self.path == '/api/state':
+            self._json(200, self.app.state())
+        elif self.path == '/stream.mjpg':
+            self._stream()
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        self._write({'/api/open': self.app.open, '/api/close': self.app.close})
+
+    def do_PUT(self):
+        self._write({'/api/schedule': self.app.set_schedule})
+
+    def _stream(self):
+        try:
+            self.camera.acquire()
+        except Exception:
+            log.exception('camera failed to start')
+            return self._json(503, {'error': 'camera unavailable'})
+        log.info('viewer connected: %s', self.client_address[0])
+        try:
+            self.send_response(200)
+            self.send_header('Cache-Control', 'no-cache, private')
+            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
+            self.end_headers()
+            while True:
+                with self.frames.condition:
+                    if not self.frames.condition.wait(timeout=5):
+                        log.warning('no frame from camera for 5 s')
+                        continue
+                    frame = self.frames.frame
+                self.wfile.write(b'--FRAME\r\n')
+                self.send_header('Content-Type', 'image/jpeg')
+                self.send_header('Content-Length', str(len(frame)))
+                self.end_headers()
+                self.wfile.write(frame)
+                self.wfile.write(b'\r\n')
+        except (BrokenPipeError, ConnectionResetError):
+            log.info('viewer left: %s', self.client_address[0])
+        finally:
+            self.camera.release()
+
+    def log_message(self, fmt, *args):   # silence per-request stderr noise
+        pass
+
+
+def scheduler_loop(app):
+    while True:
+        try:
+            app.tick()
+        except Exception:
+            log.exception('tick failed')
+        time.sleep(TICK_S)
+
+
 def main():
     user = os.environ.get('IRRIGATION_USER', '')
     password = os.environ.get('IRRIGATION_PASS', '')
     if not user or len(password) < MIN_PASS_LEN:
         sys.exit(f'set IRRIGATION_USER and IRRIGATION_PASS (>= {MIN_PASS_LEN} chars), see ~/.irrigation.env')
-    raise NotImplementedError('wired in Task 8')
+    import paho.mqtt.client as mqtt    # here so tests run without paho
+    try:
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)   # paho >= 2.0
+    except AttributeError:
+        client = mqtt.Client()                                   # paho 1.x (Bookworm apt)
+    app = App(STATE_PATH, lambda t, p: client.publish(t, p, qos=1, retain=False))
+    client.on_connect = lambda c, u, f, rc: c.subscribe(
+        [('irrigation/+/availability', 1), ('irrigation/+/state', 1)])
+    client.on_message = lambda c, u, m: app.on_message(m.topic, m.payload)
+    client.on_disconnect = lambda c, u, rc: app.on_broker_lost()
+    client.connect_async(MQTT_HOST, MQTT_PORT)   # retries in the background if mosquitto is late
+    client.loop_start()
+    threading.Thread(target=scheduler_loop, args=(app,), daemon=True).start()
+
+    frames = FrameBuffer()
+    Handler.app, Handler.camera, Handler.frames = app, Camera(*picamera(frames)), frames
+    Handler.user, Handler.password = user, password
+    log.info('serving on http://0.0.0.0:%d/', PORT)
+    server.ThreadingHTTPServer(('', PORT), Handler).serve_forever()
 
 
 if __name__ == '__main__':
