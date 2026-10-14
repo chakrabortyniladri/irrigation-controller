@@ -101,11 +101,12 @@ function rec(){if(rc){clearInterval(rt);rc.stop();rc=null;$('rb').innerHTML='&#9
  var i=frame();if(!i)return;if(!window.MediaRecorder){msg('This browser cannot record');return}
  var c=document.createElement('canvas'),x=c.getContext('2d');c.width=i.naturalWidth;c.height=i.naturalHeight;
  draw(x,i);rt=setInterval(function(){draw(x,i)},100);
- var ty=['video/mp4','video/webm'].filter(function(m){return MediaRecorder.isTypeSupported(m)})[0],ch=[];
+ // H.264 first: QuickTime/iPhone can't play VP8/VP9 or webm
+ var ty=['video/mp4;codecs=avc1.42E01E','video/mp4;codecs=avc1','video/mp4','video/webm'].filter(function(m){return MediaRecorder.isTypeSupported(m)})[0],ch=[];
  var r=new MediaRecorder(c.captureStream(10),ty?{mimeType:ty}:{});
  r.ondataavailable=function(e){if(e.data.size)ch.push(e.data)};
  r.onstop=function(){dl(new Blob(ch,{type:r.mimeType}),r.mimeType.indexOf('mp4')>=0?'mp4':'webm')};
- r.start(1000);rc=r;$('rb').innerHTML='&#9632; Stop recording'}
+ r.start(1000);rc=r;msg('Recording '+(r.mimeType||'video'));$('rb').innerHTML='&#9632; Stop recording'}
 function sync(t){S=JSON.parse(t);var o=S.valve==='open',on=S.esp_online;
  $('on').textContent=on?'● ESP online':'● Valve offline';$('on').style.color=on?'#34d399':'#f87171';
  $('st').className=o?'open':'closed';$('st').textContent=o?'OPEN':'CLOSED';
