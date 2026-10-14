@@ -1,9 +1,9 @@
 # Irrigation Controller (Pi 4 + ESP-01S): Design
 
 **Date:** 2026-10-14
-**Status:** Draft, awaiting review
+**Status:** Approved 2026-10-14
 **Supersedes:** `2026-10-10-irrigation-controller-design.md` (ESP-only phase 1)
-**Repo:** new private GitHub repo `chakrabortyniladri/irrigation-controller`. The spec moves there when the repo is created.
+**Repo:** private GitHub repo `chakrabortyniladri/irrigation-controller`
 
 ## Goal
 
@@ -45,6 +45,7 @@ firmware/test/                    host tests (g++)
 server/irrigation_server.py       HTTP + MQTT + camera wiring
 server/schedule.py                pure schedule rule (no I/O)
 server/state_store.py             atomic JSON load/save
+server/camera.py                  on-demand camera (viewer refcount)
 server/static/index.html          single page (vanilla HTML/JS)
 server/test_*.py                  unittest
 systemd/irrigation.service
@@ -82,13 +83,14 @@ anything over 90 s with HTTP 400, so the UI shows the error instead of a silent 
 - The ESP stores `last_sched_day` (year·1000 + yday) in EEPROM. It updates it whenever a **scheduled** open starts: one from the Pi (`"scheduled":true`) or its own fallback.
 - The ESP reports `last_sched_day` in its retained state.
 - **Pi scheduler:** when the rule says run and the ESP is online, the Pi checks the ESP's `last_sched_day`. If it's already today, the Pi skips. Otherwise it sends `open` with `"scheduled":true` and retries every 10 s until the state shows the valve open with today's `last_sched_day`. The Pi then also writes today into its own `state.json` for display and history.
+- The ESP **ignores** a scheduled open if its own clock is unsynced or `last_sched_day` is already today. This makes the Pi's 10 s retries harmless, and the ESP never restarts a scheduled run.
 - A power cut mid-run still counts as today's run, because the ESP wrote the day when the run started. The run is not restarted.
 - Manual Start/Stop never touches `last_sched_day`.
 - Failure bias: a rare double run (each one ≤ 90 s) is preferred over a lost run.
 
 ### ESP fallback (Pi dead)
 
-- "Pi dead" means MQTT has been disconnected for ≥ `PI_DEAD_AFTER` (30 min), counted from the last successful connection or from boot.
+- "Pi dead" means no server heartbeat (`irrigation/server/heartbeat`, published by the server every 60 s) for ≥ `PI_DEAD_AFTER` (30 min), counted from boot or the last heartbeat. A heartbeat is used instead of the broker connection so that a crashed server with Mosquitto still running also triggers the fallback. Once set, "dead" stays latched until the next heartbeat, so `millis()` rollover can't clear it.
 - When the Pi is dead, the ESP applies the same rule with its fixed `FALLBACK_TIME` = 08:00 and `FALLBACK_S` = 60, ending at `CATCHUP_CUTOFF`.
 - The 30-minute grace period covers a normal power cut where both boot together and the ESP connects first.
 - Example: Pi dead since yesterday → the ESP waters at exactly 08:00.
@@ -108,11 +110,11 @@ anything over 90 s with HTTP 400, so the UI shows the error instead of a silent 
   - `{"action":"open","seconds":45}`
   - `{"action":"open","seconds":60,"scheduled":true}`
   - `{"action":"close"}`
-- **State** `irrigation/<guid>/state` (retained). Published on change and every 10 s while open:
+- **State** `irrigation/<guid>/state` (retained). Published on change and every 2 s while open, so the page countdown moves smoothly:
   `{"valve":"open","remaining_s":42,"max_s":90,"synced":true,"last_sched_day":2026287,"fallback":false}`
   `fallback` is true while the ESP considers the Pi dead.
 - **Availability** `irrigation/<guid>/availability`: LWT `{"status":"offline"}`, `{"status":"online",...}` on connect.
-- The server learns the GUID from the first availability message and stores it in `state.json`. One ESP only; if a different GUID appears, it is logged and ignored.
+- The server learns the GUID from the first availability or state message (whichever arrives first) and stores it in `state.json`. One ESP only; if a different GUID appears, it is logged and ignored.
 
 ## Pi 4 server
 
@@ -144,6 +146,8 @@ schedule disabled, 08:00, 60 s.
 
 ### systemd
 
+The server listens on port 8000 and replaces the old `camera.service`, which must be disabled because only one process can hold the camera.
+Mosquitto listens on 1883 without authentication. Anyone on the LAN or tailnet can publish to it, but the ESP still caps every run at 90 s.
 `irrigation.service`: `After=network-online.target mosquitto.service`, `Restart=always`,
 `EnvironmentFile=/home/nilrasp/.irrigation.env`. The scheduler loop runs every 5 s,
 so catch-up starts within seconds of NTP sync after boot.
@@ -179,7 +183,7 @@ Two panels side by side on wide screens, stacked on a phone. Vanilla HTML/JS. Po
 | Situation | Behaviour |
 |-----------|-----------|
 | ESP offline | UI shows offline, open/close → 503, a due schedule waits (same day, < 22:00) |
-| Pi down | No remote control. ESP fallback waters at 08:00 after 30 min without MQTT |
+| Pi down | No remote control. ESP fallback waters at 08:00 after 30 min without a server heartbeat |
 | Power cut, both devices | Both boot. The Pi applies catch-up once NTP is synced, deduplicated by the ESP's `last_sched_day` |
 | No internet after a power cut | No clock on either device, so no scheduled run until NTP. Optional DS3231 RTC on the Pi removes this (out of scope) |
 | Camera busy/missing | Stream 503 + UI message. Irrigation unaffected |
@@ -198,7 +202,7 @@ Two panels side by side on wide screens, stacked on a phone. Vanilla HTML/JS. Po
 - **On the Pi, end to end:**
   1. Schedule a run 2 min ahead and confirm it fires.
   2. Pull the power before the run time and restore it after; confirm the catch-up and that it waters only once.
-  3. Stop mosquitto for more than 30 min across `FALLBACK_TIME` (temporarily set a near time) and confirm the ESP fallback.
+  3. Stop `irrigation.service` for more than 30 min across `FALLBACK_TIME` (temporarily set a near time) and confirm the ESP fallback.
 
 ## Out of scope
 
