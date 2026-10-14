@@ -114,7 +114,8 @@ anything over 90 s with HTTP 400, so the UI shows the error instead of a silent 
   `{"valve":"open","remaining_s":42,"max_s":90,"synced":true,"last_sched_day":2026287,"fallback":false}`
   `fallback` is true while the ESP considers the Pi dead.
 - **Availability** `irrigation/<guid>/availability`: LWT `{"status":"offline"}`, `{"status":"online",...}` on connect.
-- The server learns the GUID from the first availability or state message (whichever arrives first) and stores it in `state.json`. One ESP only; if a different GUID appears, it is logged and ignored.
+- Liveness: the ESP answers every server heartbeat with a state publish. The server shows the ESP online only if it got a live (non-retained) message from it within 150 s, or until an "offline" arrives. A retained "online" can outlive the ESP when the broker restarts after a power cut, because the LWT was never sent.
+- The server pairs with the first GUID that sends "online" on its availability topic and stores it in `state.json`. One ESP only; if a different GUID appears, it is logged and ignored.
 
 ## Pi 4 server
 

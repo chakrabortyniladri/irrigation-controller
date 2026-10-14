@@ -30,6 +30,7 @@ TOPIC_HEARTBEAT = 'irrigation/server/heartbeat'
 TICK_S = 5            # scheduler period; catch-up starts within seconds of NTP sync
 RETRY_S = 10          # resend a scheduled open until the ESP confirms it
 HEARTBEAT_S = 60      # ESP falls back to its own 08:00 run after 30 min without one
+STALE_S = 150         # ESP answers each heartbeat with its state; silent this long = offline
 MIN_PASS_LEN = 12
 FAIL_DELAY_S = 1.0    # slows password guessing
 
@@ -72,7 +73,7 @@ class App:
         self.now, self.synced, self.mono = clock, synced, mono
         self.is_synced = False
         self.esp = {}                     # latest ESP state message
-        self.esp_online = False
+        self.last_seen = float('-inf')    # mono time of the last live (non-retained) ESP message
         self.pending = {}                 # guid -> state seen before pairing (retained order varies)
         self.last_attempt = self.last_beat = float('-inf')
         self.lock = threading.Lock()
@@ -84,7 +85,7 @@ class App:
         return f"irrigation/{self.data['guid']}/{kind}"
 
     # ---- MQTT in ----
-    def on_message(self, topic, payload):
+    def on_message(self, topic, payload, retained=False):
         parts = topic.split('/')
         if len(parts) != 3 or parts[0] != 'irrigation' or parts[1] == 'server':
             return
@@ -113,9 +114,12 @@ class App:
             if guid != self.data['guid']:
                 log.warning('ignoring unknown ESP %s', guid)
                 return
-            if kind == 'availability':
-                self.esp_online = msg.get('status') == 'online'
-            elif kind == 'state':
+            # A retained "online" can outlive the ESP (broker restarted, LWT never sent): only live traffic counts.
+            if kind == 'availability' and msg.get('status') != 'online':
+                self.last_seen = float('-inf')
+            elif not retained:
+                self.last_seen = self.mono()
+            if kind == 'state':
                 self.esp = msg
                 self._note_run()
 
@@ -127,9 +131,13 @@ class App:
             self.data['last_run'] = now.strftime('%Y-%m-%d %H:%M')
             self._save()
 
+    @property
+    def esp_online(self):
+        return self.mono() - self.last_seen < STALE_S
+
     def on_broker_lost(self):
         with self.lock:
-            self.esp_online = False
+            self.last_seen = float('-inf')
 
     # ---- API: each returns (status, body) ----
     def open(self, body):
@@ -313,7 +321,7 @@ def main():
     app = App(STATE_PATH, lambda t, p: client.publish(t, p, qos=1, retain=False))
     client.on_connect = lambda c, u, f, rc: c.subscribe(
         [('irrigation/+/availability', 1), ('irrigation/+/state', 1)])
-    client.on_message = lambda c, u, m: app.on_message(m.topic, m.payload)
+    client.on_message = lambda c, u, m: app.on_message(m.topic, m.payload, m.retain)
     client.on_disconnect = lambda c, u, rc: app.on_broker_lost()
     client.connect_async(MQTT_HOST, MQTT_PORT)   # retries in the background if mosquitto is late
     client.loop_start()

@@ -91,6 +91,27 @@ class TestEsp(unittest.TestCase):
         r.esp(); r.app.on_broker_lost()
         self.assertFalse(r.app.esp_online)
 
+    def test_retained_online_is_not_live(self):
+        # After a power cut the broker replays the old retained "online", but the dead ESP's LWT never fired.
+        r = Rig()
+        r.app.on_message(f'irrigation/{G}/availability', b'{"status":"online"}', retained=True)
+        r.app.on_message(f'irrigation/{G}/state', b'{"valve":"closed"}', retained=True)
+        self.assertEqual(r.app.data['guid'], G)
+        self.assertFalse(r.app.esp_online)
+        self.assertEqual(r.app.open({'seconds': 30})[0], 503)
+        r.app.on_message(f'irrigation/{G}/state', b'{"valve":"closed"}')   # live heartbeat reply
+        self.assertTrue(r.app.esp_online)
+
+    def test_offline_when_esp_goes_silent(self):
+        r = Rig(); r.esp(); r.schedule_on()
+        r.mono = srv.STALE_S - 1
+        self.assertTrue(r.app.esp_online)
+        r.mono = srv.STALE_S
+        self.assertFalse(r.app.esp_online)
+        self.assertFalse(r.app.state()['esp_online'])
+        r.app.tick()
+        self.assertEqual(r.commands(), [])
+
     def test_bad_payloads_ignored(self):
         r = Rig()
         for topic, payload in ((f'irrigation/{G}/state', b'not json'),

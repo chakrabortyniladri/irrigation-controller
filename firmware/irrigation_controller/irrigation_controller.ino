@@ -115,7 +115,8 @@ namespace {
     }
   }
 
-  void onHeartbeat() { pi.seen(millis()); }
+  // Reply to every heartbeat: the Pi trusts only live traffic, not the retained "online".
+  void onHeartbeat() { pi.seen(millis()); publishState(); }
 }
 
 void setup() {
