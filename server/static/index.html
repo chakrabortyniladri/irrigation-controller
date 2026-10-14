@@ -1,1 +1,100 @@
-<!DOCTYPE html><title>Irrigation</title>
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Irrigation</title>
+<style>
+body{background:#0f1117;color:#e8eaf0;font-family:-apple-system,sans-serif;margin:0;padding:1rem}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem;max-width:1100px;margin:0 auto}
+.card{background:#1a1d27;border:1px solid #2e3248;border-radius:14px;padding:1.2rem;margin-bottom:1rem}
+.cl{font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#7b82a0;margin-bottom:.8rem;display:flex;justify-content:space-between}
+#vid{width:100%;aspect-ratio:4/3;background:#000;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#7b82a0;overflow:hidden}
+#vid img{width:100%;height:100%;object-fit:contain}
+button{padding:.8rem 0;border-radius:8px;border:1.5px solid #2e3248;background:#22263a;color:#e8eaf0;font-size:1rem;font-weight:600;width:100%;margin-top:.8rem}
+button:disabled{opacity:.4}
+button.sel{border-color:#4f7ef8;color:#4f7ef8}
+.g{display:grid;grid-template-columns:repeat(5,1fr);gap:.4rem}
+.g button{margin-top:0}
+input{background:#22263a;border:1px solid #2e3248;color:#e8eaf0;border-radius:6px;padding:.4rem;font-size:1rem;width:4.5rem}
+input[type=time]{width:7rem}input[type=checkbox]{width:auto;transform:scale(1.4)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-top:.8rem}
+.ct{text-align:center}
+#st{font-size:1.5rem;font-weight:700}.open{color:#34d399}.closed{color:#f87171}
+#rm{font-size:2.4rem;font-variant-numeric:tabular-nums;margin:.3rem 0 .8rem}
+#ss{font-size:1.1rem;padding:1rem 0}
+#ss.start{background:#0d3326;border-color:#34d399;color:#34d399}
+#ss.stop{background:#3b1212;border-color:#f87171;color:#f87171}
+.sf{margin-top:.8rem;font-size:.8rem;color:#fbbf24;text-align:center}
+.mu{font-size:.8rem;color:#7b82a0;margin-top:.6rem}
+#fbk{display:none;background:#3a2e0d;border:1px solid #fbbf24;color:#fbbf24;border-radius:8px;padding:.6rem;margin-bottom:1rem;font-size:.85rem}
+#msg{min-height:1.2em;color:#fbbf24;font-size:.85rem;margin-bottom:.6rem}
+</style></head><body>
+<main>
+<section>
+ <div class="card">
+  <div class="cl">Video</div>
+  <div id="vid">Camera off</div>
+  <button id="vb" onclick="vid()">&#9654; Start video</button>
+  <div class="mu">Auto-stops after 10 min</div>
+ </div>
+</section>
+<section>
+ <div id="fbk">ESP is running its own 08:00 fallback (it lost contact with the Pi)</div>
+ <div id="msg"></div>
+ <div class="card ct">
+  <div class="cl"><span>Valve</span><span id="on">&#9679; offline</span></div>
+  <div id="st" class="closed">CLOSED</div>
+  <div id="rm">--:--</div>
+  <div class="g" id="pre"></div>
+  <div class="row"><span>Run for</span><span><input id="sec" type="number" min="1" max="90" value="60" oninput="hl()"> s</span></div>
+  <button id="ss" class="start" onclick="ss()" disabled>START</button>
+  <div class="sf">&#128737; Safety cutoff: <b id="mx">90</b> s max</div>
+ </div>
+ <div class="card">
+  <div class="cl">Daily schedule</div>
+  <div class="row"><span>Enabled</span><input type="checkbox" id="se"></div>
+  <div class="row"><span>Start at</span><input type="time" id="stt" value="08:00" max="21:59"></div>
+  <div class="row"><span>Run for</span><span><input type="number" id="ssec" min="1" max="90" value="60"> s</span></div>
+  <div class="mu" id="nx"></div>
+  <div class="mu" id="lr"></div>
+  <div class="mu">Missed runs catch up when the Pi is back, until 22:00.</div>
+  <button onclick="save()">Save schedule</button>
+  <div class="mu" id="ck"></div>
+ </div>
+</section>
+</main>
+<script>
+var S=null,loaded=false,vt=null;
+function $(i){return document.getElementById(i)}
+function msg(t){$('msg').textContent=t}
+function mmss(s){return Math.floor(s/60)+':'+('0'+s%60).slice(-2)}
+[15,30,45,60,90].forEach(function(s){var b=document.createElement('button');b.textContent=s;
+ b.onclick=function(){$('sec').value=s;hl()};$('pre').appendChild(b)});
+function hl(){var v=$('sec').value;document.querySelectorAll('#pre button').forEach(function(b){b.classList.toggle('sel',b.textContent==v)})}
+function vid(){var img=$('vid').querySelector('img');clearTimeout(vt);
+ if(img){img.onerror=null;img.src='';$('vid').textContent='Camera off';$('vb').innerHTML='&#9654; Start video';return}
+ img=new Image();img.alt='Live camera';
+ img.onerror=function(){$('vid').textContent='Camera unavailable';$('vb').innerHTML='&#9654; Start video'};
+ img.src='/stream.mjpg';$('vid').textContent='';$('vid').appendChild(img);
+ $('vb').innerHTML='&#9632; Stop video';vt=setTimeout(vid,600000)}
+function sync(t){S=JSON.parse(t);var o=S.valve==='open',on=S.esp_online;
+ $('on').textContent=on?'● ESP online':'● Valve offline';$('on').style.color=on?'#34d399':'#f87171';
+ $('st').className=o?'open':'closed';$('st').textContent=o?'OPEN':'CLOSED';
+ $('rm').textContent=o?mmss(S.remaining_s):'--:--';
+ $('ss').className=o?'stop':'start';$('ss').textContent=o?'STOP':'START';$('ss').disabled=!on;
+ $('mx').textContent=S.max_s;$('sec').max=$('ssec').max=S.max_s;
+ $('fbk').style.display=S.fallback?'block':'none';
+ if(!loaded){$('se').checked=S.schedule.enabled;$('stt').value=S.schedule.time;$('ssec').value=S.schedule.seconds;loaded=true}
+ $('nx').textContent='Next: '+S.next_run;$('lr').textContent='Last: '+(S.last_run||'never');
+ $('ck').textContent='Clock '+S.clock+(S.synced?' · synced':' · NOT synced, schedule paused')}
+function req(m,u,b,ok,then){var x=new XMLHttpRequest();x.open(m,u);
+ if(m!=='GET')x.setRequestHeader('Content-Type','application/json');
+ x.onload=function(){if(x.status===200){if(then)then(x.responseText);if(ok)msg(ok)}
+  else{var e='Error '+x.status;try{e=JSON.parse(x.responseText).error||e}catch(_){}msg(e)}};
+ x.onerror=function(){msg('No response from Pi')};x.send(b?JSON.stringify(b):null)}
+function poll(){req('GET','/api/state',null,null,sync)}
+function ss(){if(S&&S.valve==='open')req('POST','/api/close',{},'Stopped',poll);
+ else req('POST','/api/open',{seconds:parseInt($('sec').value,10)},'Started',poll)}
+function save(){req('PUT','/api/schedule',{enabled:$('se').checked,time:$('stt').value,
+ seconds:parseInt($('ssec').value,10)},'Schedule saved',function(){loaded=false;poll()})}
+hl();poll();setInterval(poll,2000);
+</script></body></html>
