@@ -32,6 +32,12 @@ Open `http://<pi-tailscale-name>:8000/`.
 
 Update: `cd ~/irrigation-controller && git pull && sudo systemctl restart irrigation`
 
+## New or reflashed ESP (new GUID)
+
+The Pi pairs with the first ESP that comes online and ignores any other. To re-pair:
+`sudo systemctl stop irrigation`, delete the `"guid"` entry in `~/.local/share/irrigation/state.json`
+(set it to `null`), then `sudo systemctl start irrigation`.
+
 ## Tests
 
 ```bash

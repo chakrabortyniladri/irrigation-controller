@@ -73,6 +73,7 @@ class App:
         self.is_synced = False
         self.esp = {}                     # latest ESP state message
         self.esp_online = False
+        self.pending = {}                 # guid -> state seen before pairing (retained order varies)
         self.last_attempt = self.last_beat = float('-inf')
         self.lock = threading.Lock()
 
@@ -97,8 +98,17 @@ class App:
             return
         with self.lock:
             if self.data['guid'] is None:
+                # Pair only with a live ESP, so a stray/offline GUID can't lock us out.
+                # Re-pair: stop the service, remove "guid" from state.json, start it.
+                if kind == 'state':
+                    self.pending[guid] = msg
+                    return
+                if kind != 'availability' or msg.get('status') != 'online':
+                    return
                 self.data['guid'] = guid
                 self._save()
+                self.esp = self.pending.pop(guid, {})
+                self.pending.clear()
                 log.info('paired with ESP %s', guid)
             if guid != self.data['guid']:
                 log.warning('ignoring unknown ESP %s', guid)

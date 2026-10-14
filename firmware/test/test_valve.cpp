@@ -33,12 +33,24 @@ void test_auto_close_at_deadline() {
   ASSERT_FALSE(v.tick(1000 + 45001));   // already closed, no second event
 }
 
-void test_reopen_restarts() {
+void test_reopen_never_exceeds_cap() {
   Valve v;
   v.open(30, 0);
-  v.open(30, 20000);
-  ASSERT_FALSE(v.tick(45000));
+  v.open(30, 20000);   // extends: closes at 50 s
+  ASSERT_FALSE(v.tick(49999));
   ASSERT_TRUE(v.tick(50000));
+  v.open(90, 0);
+  v.open(90, 60000);   // would end at 150 s; continuous flow is capped at 90 s
+  ASSERT_FALSE(v.tick(89999));
+  ASSERT_TRUE(v.tick(90000));
+}
+
+void test_may_block() {
+  Valve v;
+  ASSERT_TRUE(v.mayBlock(0));          // closed: reconnect freely
+  v.open(10, 0);
+  ASSERT_TRUE(v.mayBlock(5000));       // 5 s left
+  ASSERT_FALSE(v.mayBlock(6001));      // 4 s left: a ~3 s blocking reconnect could overrun
 }
 
 void test_close() {
@@ -80,7 +92,8 @@ int main() {
   test_initial_closed();
   test_clamp();
   test_auto_close_at_deadline();
-  test_reopen_restarts();
+  test_reopen_never_exceeds_cap();
+  test_may_block();
   test_close();
   test_remaining();
   test_rollover();

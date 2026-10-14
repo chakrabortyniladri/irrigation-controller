@@ -94,9 +94,10 @@ void begin(const char* guid, const char* label, CommandHandler onCommand, Notify
   ArduinoOTA.begin();
 }
 
-void tick() {
+void tick(bool mayBlock) {
   ArduinoOTA.handle();
   if (mqtt.connected()) { mqtt.loop(); return; }
+  if (!mayBlock) return;   // valve about to auto-close: don't stall loop() now
   unsigned long now = millis();
   if ((long)(now - nextReconnect) < 0) return;   // rollover-safe
   if (connectMqtt()) {

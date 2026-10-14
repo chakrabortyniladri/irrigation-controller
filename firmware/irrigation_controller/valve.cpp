@@ -17,9 +17,15 @@ uint16_t clampSeconds(long seconds) {
 }
 
 void Valve::open(long seconds, uint32_t nowMs) {
+  uint32_t want = (uint32_t)clampSeconds(seconds) * 1000UL;
+  if (isOpen) {   // second open mid-run: extend, but the overflow limit is continuous flow
+    uint32_t total = (nowMs - startMs) + want;
+    durationMs = total < MAX_RUN_S * 1000UL ? total : MAX_RUN_S * 1000UL;
+    return;
+  }
   isOpen     = true;
   startMs    = nowMs;
-  durationMs = (uint32_t)clampSeconds(seconds) * 1000UL;
+  durationMs = want;
 }
 
 bool Valve::close() {

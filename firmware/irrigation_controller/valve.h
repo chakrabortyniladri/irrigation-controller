@@ -13,8 +13,10 @@ struct Valve {
   uint32_t startMs    = 0;
   uint32_t durationMs = 0;
 
-  void open(long seconds, uint32_t nowMs);   // (re)starts the run, seconds clamped
+  void open(long seconds, uint32_t nowMs);   // starts, or extends a running one; never > MAX_RUN_S continuous
   bool close();                              // true if it was open
   bool tick(uint32_t nowMs);                 // true if it auto-closed on this call
   uint32_t remainingS(uint32_t nowMs) const;
+  // false when a ~3 s blocking network call (DNS + TCP + CONNACK) could overrun the auto-close
+  bool mayBlock(uint32_t nowMs) const { return !isOpen || remainingS(nowMs) > 4; }
 };

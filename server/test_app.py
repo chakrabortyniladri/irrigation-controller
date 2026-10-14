@@ -65,8 +65,19 @@ class TestEsp(unittest.TestCase):
     def test_learns_guid_from_state_first(self):
         r = Rig()
         r.app.on_message(f'irrigation/{G}/state', b'{"valve":"closed","last_sched_day":5}')
+        self.assertIsNone(r.app.data['guid'])                  # pairing needs "online"
+        r.app.on_message(f'irrigation/{G}/availability', b'{"status":"online"}')
         self.assertEqual(r.app.data['guid'], G)
-        self.assertEqual(r.app.esp['last_sched_day'], 5)
+        self.assertEqual(r.app.esp['last_sched_day'], 5)       # earlier retained state kept
+
+    def test_pairs_only_on_online_availability(self):
+        r = Rig()
+        other = 'b' * 32
+        r.app.on_message(f'irrigation/{other}/availability', b'{"status":"offline"}')
+        r.app.on_message(f'irrigation/{other}/command', b'{}')
+        self.assertIsNone(r.app.data['guid'])
+        r.esp()
+        self.assertEqual(r.app.data['guid'], G)
 
     def test_ignores_second_esp(self):
         r = Rig(); r.esp()

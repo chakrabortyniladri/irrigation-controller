@@ -134,7 +134,7 @@ void setup() {
 }
 
 void loop() {
-  network::tick();
+  network::tick(valve.mayBlock(millis()));
   uint32_t now = millis();
 
   if (fallbackDue(localNow(), pi.update(now), lastSchedDay)) {
