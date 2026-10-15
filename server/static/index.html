@@ -28,6 +28,7 @@ input[type=time]{width:7rem}input[type=checkbox]{width:auto;transform:scale(1.4)
 .sf{margin-top:.8rem;font-size:.8rem;color:#fbbf24;text-align:center}
 .mu{font-size:.8rem;color:#7b82a0;margin-top:.6rem}
 #fbk{display:none;background:#3a2e0d;border:1px solid #fbbf24;color:#fbbf24;border-radius:8px;padding:.6rem;margin-bottom:1rem;font-size:.85rem}
+#sum{font-size:1.1rem;font-weight:600}
 #msg{min-height:1.2em;color:#fbbf24;font-size:.85rem;margin-bottom:.6rem}
 </style></head><body>
 <main>
@@ -54,19 +55,22 @@ input[type=time]{width:7rem}input[type=checkbox]{width:auto;transform:scale(1.4)
  </div>
  <div class="card">
   <div class="cl">Daily schedule</div>
-  <div class="row"><span>Enabled</span><input type="checkbox" id="se"></div>
-  <div class="row"><span>Start at</span><input type="time" id="stt" value="08:00" max="21:59"></div>
-  <div class="row"><span>Run for</span><span><input type="number" id="ssec" min="1" max="90" value="60"> s</span></div>
-  <div class="mu" id="nx"></div>
+  <div id="sum">--</div>
+  <div id="sfm" hidden>
+  <div class="row"><span>Enabled</span><input type="checkbox" id="se" oninput="dirty()"></div>
+  <div class="row"><span>Start at</span><input type="time" id="stt" oninput="dirty()" value="08:00" max="21:59"></div>
+  <div class="row"><span>Run for</span><span><input type="number" id="ssec" oninput="dirty()" min="1" max="90" value="60"> s</span></div>
+  <div class="two"><button id="svb" onclick="save()" disabled>Save</button><button onclick="edit(false)">Cancel</button></div>
+  </div>
+  <button id="eb" onclick="edit(true)">&#9998; Edit schedule</button>
   <div class="mu" id="lr"></div>
   <div class="mu">Missed runs catch up when the Pi is back, until 22:00.</div>
-  <button onclick="save()">Save schedule</button>
   <div class="mu" id="ck"></div>
  </div>
 </section>
 </main>
 <script>
-var S=null,loaded=false,vt=null;
+var S=null,vt=null;
 function $(i){return document.getElementById(i)}
 function msg(t){$('msg').textContent=t}
 function mmss(s){return Math.floor(s/60)+':'+('0'+s%60).slice(-2)}
@@ -114,8 +118,8 @@ function sync(t){S=JSON.parse(t);var o=S.valve==='open',on=S.esp_online;
  $('ss').className=o?'stop':'start';$('ss').textContent=o?'STOP':'START';$('ss').disabled=!on;
  $('mx').textContent=S.max_s;$('sec').max=$('ssec').max=S.max_s;
  $('fbk').style.display=S.fallback?'block':'none';
- if(!loaded){$('se').checked=S.schedule.enabled;$('stt').value=S.schedule.time;$('ssec').value=S.schedule.seconds;loaded=true}
- $('nx').textContent='Next: '+S.next_run;$('lr').textContent='Last: '+(S.last_run||'never');
+ var c=S.schedule;$('sum').textContent='Current schedule: '+(c.enabled?c.time+' for '+c.seconds+' s · next run '+S.next_run.replace(' '+c.time,''):'off');
+$('lr').textContent='Last: '+(S.last_run||'never');
  $('ck').textContent='Clock '+S.clock+(S.synced?' · synced':' · NOT synced, schedule paused')}
 function req(m,u,b,ok,then){var x=new XMLHttpRequest();x.open(m,u);
  if(m!=='GET')x.setRequestHeader('Content-Type','application/json');
@@ -125,7 +129,13 @@ function req(m,u,b,ok,then){var x=new XMLHttpRequest();x.open(m,u);
 function poll(){req('GET','/api/state',null,null,sync)}
 function ss(){if(S&&S.valve==='open')req('POST','/api/close',{},'Stopped',poll);
  else req('POST','/api/open',{seconds:parseInt($('sec').value,10)},'Started',poll)}
-function save(){req('PUT','/api/schedule',{enabled:$('se').checked,time:$('stt').value,
- seconds:parseInt($('ssec').value,10)},'Schedule saved',function(){loaded=false;poll()})}
+function save(){var b={enabled:$('se').checked,time:$('stt').value,seconds:parseInt($('ssec').value,10)};
+ if(!confirm(b.enabled?'Water daily at '+b.time+' for '+b.seconds+' s?':'Turn the daily schedule off?'))return;
+ req('PUT','/api/schedule',b,'Schedule saved',function(){edit(false);poll()})}
+// Save stays grey until the form differs from what the Pi has
+function dirty(){var c=S.schedule;$('svb').disabled=$('se').checked===c.enabled&&$('stt').value===c.time&&parseInt($('ssec').value,10)===c.seconds}
+// Form stays hidden until asked for, so a stray tap can't change the schedule. Opening it loads the current values.
+function edit(on){if(on&&S){var c=S.schedule;$('se').checked=c.enabled;$('stt').value=c.time;$('ssec').value=c.seconds}
+ $('sfm').hidden=!on;$('eb').hidden=on;if(on)dirty()}
 hl();poll();setInterval(poll,2000);
 </script></body></html>
