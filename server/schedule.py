@@ -4,6 +4,7 @@ Run if enabled, clock synced, start <= now < 22:00 (same local day) and the ESP 
 recorded a scheduled run today. That one rule covers on-time runs and power-cut catch-up.
 """
 import re
+from datetime import timedelta
 
 MAX_RUN_S = 90                 # more than this overflows; the ESP clamps to the same value
 DEFAULT_RUN_S = 60
@@ -33,10 +34,14 @@ def next_run(sched, now, ran_today):
         return 'Schedule off'
     t = sched['time']
     if ran_today or (now.hour, now.minute) >= CUTOFF:
-        return f'tomorrow {t}'
+        return _day(now + timedelta(days=1), t)
     if (now.hour, now.minute) < _hm(t):
-        return f'today {t}'
+        return _day(now, t)
     return 'now (catching up)'
+
+
+def _day(d, t):
+    return f'{d:%a} {d.day} {d:%b} {t}'   # 'Thu 15 Oct 08:00'
 
 
 def validate_seconds(v):

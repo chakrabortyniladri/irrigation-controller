@@ -47,10 +47,11 @@ class TestDue(unittest.TestCase):
 class TestNextRun(unittest.TestCase):
     def test_texts(self):
         self.assertEqual(s.next_run({**ON, 'enabled': False}, at(7, 0), False), 'Schedule off')
-        self.assertEqual(s.next_run(ON, at(7, 0), False), 'today 08:00')
+        self.assertEqual(s.next_run(ON, at(7, 0), False), 'Wed 14 Oct 08:00')
         self.assertEqual(s.next_run(ON, at(9, 0), False), 'now (catching up)')
-        self.assertEqual(s.next_run(ON, at(9, 0), True), 'tomorrow 08:00')
-        self.assertEqual(s.next_run(ON, at(22, 30), False), 'tomorrow 08:00')
+        self.assertEqual(s.next_run(ON, at(9, 0), True), 'Thu 15 Oct 08:00')
+        self.assertEqual(s.next_run(ON, at(22, 30), False), 'Thu 15 Oct 08:00')
+        self.assertEqual(s.next_run(ON, datetime(2026, 10, 31, 22, 30), False), 'Sun 1 Nov 08:00')
 
 
 class TestValidation(unittest.TestCase):

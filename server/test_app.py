@@ -161,7 +161,7 @@ class TestApi(unittest.TestCase):
         self.assertEqual(v['max_s'], 90)
         self.assertEqual(v['synced'], True)
         self.assertEqual(v['clock'], '07:00')
-        self.assertEqual(v['next_run'], 'today 08:00')
+        self.assertEqual(v['next_run'], 'Wed 14 Oct 08:00')
         self.assertEqual(v['schedule'], {'enabled': True, 'time': '08:00', 'seconds': 60})
         self.assertIsNone(v['last_run'])
         self.assertFalse(v['fallback'])
