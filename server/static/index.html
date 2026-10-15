@@ -73,6 +73,8 @@ input[type=time]{width:7rem}input[type=checkbox]{width:auto;transform:scale(1.4)
 var S=null,vt=null;
 function $(i){return document.getElementById(i)}
 function msg(t){$('msg').textContent=t}
+// Display only: '13:05' -> '1:05 pm'. The API and the ESP stay on 24 h HH:MM.
+function ap(s){return String(s).replace(/\b(\d{1,2}):(\d{2})\b/g,function(_,h,m){h=+h;return (h%12||12)+':'+m+' '+(h<12?'am':'pm')})}
 function mmss(s){return Math.floor(s/60)+':'+('0'+s%60).slice(-2)}
 [15,30,45,60,90].forEach(function(s){var b=document.createElement('button');b.textContent=s;
  b.onclick=function(){$('sec').value=s;hl()};$('pre').appendChild(b)});
@@ -118,9 +120,9 @@ function sync(t){S=JSON.parse(t);var o=S.valve==='open',on=S.esp_online;
  $('ss').className=o?'stop':'start';$('ss').textContent=o?'STOP':'START';$('ss').disabled=!on;
  $('mx').textContent=S.max_s;$('sec').max=$('ssec').max=S.max_s;
  $('fbk').style.display=S.fallback?'block':'none';
- var c=S.schedule;$('sum').textContent='Current schedule: '+(c.enabled?c.time+' for '+c.seconds+' s · next run '+S.next_run.replace(' '+c.time,''):'off');
-$('lr').textContent='Last: '+(S.last_run||'never');
- $('ck').textContent='Clock '+S.clock+(S.synced?' · synced':' · NOT synced, schedule paused')}
+ var c=S.schedule;$('sum').textContent='Current schedule: '+(c.enabled?ap(c.time)+' for '+c.seconds+' s · next run '+S.next_run.replace(' '+c.time,''):'off');
+$('lr').textContent='Last: '+ap(S.last_run||'never');
+ $('ck').textContent='Clock '+ap(S.clock)+(S.synced?' · synced':' · NOT synced, schedule paused')}
 function req(m,u,b,ok,then){var x=new XMLHttpRequest();x.open(m,u);
  if(m!=='GET')x.setRequestHeader('Content-Type','application/json');
  x.onload=function(){if(x.status===200){if(then)then(x.responseText);if(ok)msg(ok)}
@@ -130,7 +132,7 @@ function poll(){req('GET','/api/state',null,null,sync)}
 function ss(){if(S&&S.valve==='open')req('POST','/api/close',{},'Stopped',poll);
  else req('POST','/api/open',{seconds:parseInt($('sec').value,10)},'Started',poll)}
 function save(){var b={enabled:$('se').checked,time:$('stt').value,seconds:parseInt($('ssec').value,10)};
- if(!confirm(b.enabled?'Water daily at '+b.time+' for '+b.seconds+' s?':'Turn the daily schedule off?'))return;
+ if(!confirm(b.enabled?'Water daily at '+ap(b.time)+' for '+b.seconds+' s?':'Turn the daily schedule off?'))return;
  req('PUT','/api/schedule',b,'Schedule saved',function(){edit(false);poll()})}
 // Save stays grey until the form differs from what the Pi has
 function dirty(){var c=S.schedule;$('svb').disabled=$('se').checked===c.enabled&&$('stt').value===c.time&&parseInt($('ssec').value,10)===c.seconds}
